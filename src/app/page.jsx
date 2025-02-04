@@ -1,36 +1,41 @@
-// pages/index.js
-'use client'
+'use client';
 import { useEffect, useState, useRef } from 'react';
 import { db } from '@/utils/firebase';
-import { ref, onValue, push, serverTimestamp } from "firebase/database";
+import { ref, onValue, push } from "firebase/database";
 
 function HomePage() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [sender, setSender] = useState("");
+  const [receiver, setReceiver] = useState("");
+  const [isClient, setIsClient] = useState(false);
   const messageListRef = useRef(null);
 
-  const sender = localStorage.getItem('sender') || "eve";
-  const receiver = localStorage.getItem('recever') || "angel";
+  useEffect(() => {
+    setIsClient(true);
+
+    if (typeof window !== "undefined") {
+      const storedSender = localStorage.getItem('sender') || "eve";
+      const storedReceiver = localStorage.getItem('recever') || "angel";
+      setSender(storedSender);
+      setReceiver(storedReceiver);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!sender || !receiver) {
-      alert("Please set sender and receiver in localStorage.");
-      return;
+    if (sender && receiver) {
+      const messagesRef = ref(db, `messages/${getChatId(sender, receiver)}`);
+      const unsubscribe = onValue(messagesRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const messageList = Object.values(data).sort((a, b) => a.timestamp - b.timestamp);
+          setMessages(messageList);
+        } else {
+          setMessages([]);
+        }
+      });
+      return () => unsubscribe();
     }
-
-    const messagesRef = ref(db, `messages/${getChatId(sender, receiver)}`);
-
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const messageList = Object.values(data).sort((a, b) => a.timestamp - b.timestamp);
-        setMessages(messageList);
-      } else {
-        setMessages([]);
-      }
-    });
-
-    return () => unsubscribe();
   }, [sender, receiver]);
 
   useEffect(() => {
@@ -45,7 +50,7 @@ function HomePage() {
       push(messagesRef, {
         sender: sender,
         message: newMessage.trim(),
-        timestamp: serverTimestamp(),
+        timestamp: Date.now(),
       }).then(() => {
         setNewMessage("");
       }).catch((error) => {
@@ -59,10 +64,21 @@ function HomePage() {
     return `${sortedUsers[0]}_${sortedUsers[1]}`;
   };
 
-  const formatTimestamp = (timestamp) => {
-    const date = new Date(timestamp);
-    return `${date.getHours()}:${date.getMinutes()}`;
+  const handleSenderChange = (e) => {
+    setSender(e.target.value);
+    if (typeof window !== "undefined") {
+      localStorage.setItem('sender', e.target.value);
+    }
   };
+
+  const handleReceiverChange = (e) => {
+    setReceiver(e.target.value);
+    if (typeof window !== "undefined") {
+      localStorage.setItem('receiver', e.target.value);
+    }
+  };
+
+  if (!isClient) return null;
 
   return (
     <div className="container mx-auto p-4">
@@ -70,12 +86,11 @@ function HomePage() {
 
       <div className="message-list h-80 overflow-y-auto border border-gray-300 rounded p-2 mb-4" ref={messageListRef}>
         {messages.map((msg, index) => (
-          <div key={index} className={`message ${msg.sender === sender ? 'sent' : 'received'} mb-2 p-2 rounded-lg`}>
-            <div className="flex justify-between items-center">
-              <span className="message-sender font-semibold">{msg.sender}</span>
-              <span className="message-timestamp text-sm text-gray-500">{formatTimestamp(msg.timestamp)}</span>
+          <div key={index} className={`message ${msg.sender === sender ? 'bg-blue-50 text-blue-900' : 'bg-gray-50 text-gray-900'} mb-2 p-2 rounded-lg`}> 
+            <span className="font-semibold mr-2">{msg.sender}:</span> {msg.message}
+            <div className="text-xs text-gray-500 mt-1">
+              {new Date(msg.timestamp).toLocaleString()}
             </div>
-            <p>{msg.message}</p>
           </div>
         ))}
       </div>
@@ -88,7 +103,10 @@ function HomePage() {
           placeholder="Type your message..."
           className="flex-grow border border-gray-300 rounded-l-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <button onClick={sendMessage} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button
+          onClick={sendMessage}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
           Send
         </button>
       </div>
@@ -99,8 +117,20 @@ function HomePage() {
       </div>
 
       <div className="mt-4">
-        <input type="text" placeholder="Set Sender" onChange={(e) => localStorage.setItem('sender', e.target.value)} className="border border-gray-300 rounded p-2 mr-2" />
-        <input type="text" placeholder="Set Receiver" onChange={(e) => localStorage.setItem('receiver', e.target.value)} className="border border-gray-300 rounded p-2" />
+        <input
+          type="text"
+          placeholder="Set Sender"
+          value={sender}
+          onChange={handleSenderChange}
+          className="border border-gray-300 rounded p-2 mr-2"
+        />
+        <input
+          type="text"
+          placeholder="Set Receiver"
+          value={receiver}
+          onChange={handleReceiverChange}
+          className="border border-gray-300 rounded p-2"
+        />
       </div>
     </div>
   );
